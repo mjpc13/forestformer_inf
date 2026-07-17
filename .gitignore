@@ -1,0 +1,3 @@
+*.pth
+*.ply
+*__pycache__*
