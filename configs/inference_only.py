@@ -8,7 +8,7 @@ score_th = 0.4
 chunk = 10_000
 fast_voxel_mapping = True
 return_panoptic = False
-region_step_divisor = 2
+region_step_divisor = 1 # 4 is the original behaviour, 1 and 2 run inference much faster
 
 model = dict(
     type='ForAINetV2OneFormer3D_XAwarequery',
