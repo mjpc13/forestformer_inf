@@ -6,6 +6,9 @@ num_semantic_classes = 3
 radius = 16
 score_th = 0.4
 chunk = 10_000
+fast_voxel_mapping = True
+return_panoptic = False
+region_step_divisor = 2
 
 model = dict(
     type='ForAINetV2OneFormer3D_XAwarequery',
@@ -17,6 +20,9 @@ model = dict(
     radius=radius,
     score_th=score_th,
     chunk=chunk,
+    fast_voxel_mapping=fast_voxel_mapping,
+    return_panoptic=return_panoptic,
+    region_step_divisor=region_step_divisor,
 
     backbone=dict(
         type='SpConvUNet',
