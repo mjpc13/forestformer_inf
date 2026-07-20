@@ -1,3 +1,53 @@
-*.pth
-*.ply
-*__pycache__*
+# Python bytecode and caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.pyre/
+.ipynb_checkpoints/
+
+# Local environments
+.env
+.env.*
+!.env.example
+.venv/
+venv/
+env/
+
+# Build/package outputs
+build/
+dist/
+*.egg-info/
+*.so
+
+# Editor and OS files
+.DS_Store
+Thumbs.db
+.vscode/*.db*
+.vscode/ipch/
+
+# Logs and runtime outputs
+*.log
+*.out
+*.err
+runs/
+logs/
+work_dirs/
+outputs/
+
+# Large model artifacts. Keep small text notes with download locations.
+weights/*.pth
+weights/*.pt
+weights/*.ckpt
+weights/*.onnx
+!weights/*.txt
+!weights/.gitkeep
+checkpoints/
+
+# Generated inference outputs. Keep sample/reference PLY fixtures visible.
+sample_data/new_*.ply
+sample_data/*_output.ply
+sample_data/*_pred*.ply
+sample_data/*_generated*.ply

@@ -21,7 +21,6 @@ class CrossAttentionLayer(BaseModule):
             d_model, num_heads, dropout=dropout, batch_first=True)
         self.norm = nn.LayerNorm(d_model)
         self.dropout = nn.Dropout(dropout)
-        # todo: why BaseModule doesn't call it without us?
         self.init_weights()
 
     def init_weights(self):
@@ -40,7 +39,7 @@ class CrossAttentionLayer(BaseModule):
                 each of shape(n_queries_i, d_model).
             attn_masks (List[Tensor] or None): of len batch_size,
                 each of shape (n_queries, n_points).
-        
+
         Return:
             List[Tensor]: Queries of len batch_size,
                 each of shape(n_queries_i, d_model).
@@ -81,7 +80,7 @@ class SelfAttentionLayer(BaseModule):
         Args:
             x (List[Tensor]): Queries of len batch_size,
                 each of shape(n_queries_i, d_model).
-        
+
         Returns:
             List[Tensor]: Queries of len batch_size,
                 each of shape(n_queries_i, d_model).
@@ -121,7 +120,7 @@ class FFN(BaseModule):
         Args:
             x (List[Tensor]): Queries of len batch_size,
                 each of shape(n_queries_i, d_model).
-        
+
         Returns:
             List[Tensor]: Queries of len batch_size,
                 each of shape(n_queries_i, d_model).
@@ -140,36 +139,26 @@ class ForAINetv2QueryDecoder_XAwarequery(BaseModule):
 
     Args:
         num_layers (int): Number of transformer layers.
-        num_instance_queries (int): Number of instance queries.
         num_semantic_queries (int): Number of semantic queries.
-        num_classes (int): Number of classes.
         in_channels (int): Number of input channels.
         d_model (int): Number of channels for model layers.
         num_heads (int): Number of head in attention layer.
         hidden_dim (int): Dimension of attention layer.
         dropout (float): Dropout rate for transformer layer.
         activation_fn (str): 'relu' of 'gelu'.
-        iter_pred (bool): Whether to predict iteratively.
         attn_mask (bool): Whether to use mask attention.
-        pos_enc_flag (bool): Whether to use positional enconding.
     """
 
-    def __init__(self, num_layers, num_instance_queries, num_semantic_queries,
-                 num_classes, in_channels, d_model, num_heads, hidden_dim,
-                 dropout, activation_fn, iter_pred, attn_mask, fix_attention,
-                 objectness_flag, **kwargs):
+    def __init__(self, num_layers, num_semantic_queries,
+                 in_channels, d_model, num_heads, hidden_dim, dropout,
+                 activation_fn, attn_mask, fix_attention, **kwargs):
         super().__init__()
-        self.objectness_flag = objectness_flag
         self.input_proj = nn.Sequential(
             nn.Linear(in_channels, d_model), nn.LayerNorm(d_model), nn.ReLU())
-        if num_instance_queries > 0:
-            self.query = nn.Embedding(num_instance_queries + num_semantic_queries, d_model)
-        if num_instance_queries == 0:
-            self.query_proj = nn.Sequential(
-                nn.Linear(in_channels, d_model), nn.ReLU(),
-                nn.Linear(d_model, d_model))
-            self.num_semantic_queries = num_instance_queries + num_semantic_queries
-            self.semantic_queries = nn.Embedding(num_semantic_queries, in_channels)
+        self.query_proj = nn.Sequential(
+            nn.Linear(in_channels, d_model), nn.ReLU(),
+            nn.Linear(d_model, d_model))
+        self.semantic_queries = nn.Embedding(num_semantic_queries, in_channels)
         self.cross_attn_layers = nn.ModuleList([])
         self.self_attn_layers = nn.ModuleList([])
         self.ffn_layers = nn.ModuleList([])
@@ -182,18 +171,13 @@ class ForAINetv2QueryDecoder_XAwarequery(BaseModule):
             self.ffn_layers.append(
                 FFN(d_model, hidden_dim, dropout, activation_fn))
         self.out_norm = nn.LayerNorm(d_model)
-        #self.out_cls = nn.Sequential(
-        #    nn.Linear(d_model, d_model), nn.ReLU(),
-        #    nn.Linear(d_model, num_classes + 1))
-        if objectness_flag:
-            self.out_score = nn.Sequential(
-                nn.Linear(d_model, d_model), nn.ReLU(), nn.Linear(d_model, 1))
+        self.out_score = nn.Sequential(
+            nn.Linear(d_model, d_model), nn.ReLU(), nn.Linear(d_model, 1))
         self.x_mask = nn.Sequential(
             nn.Linear(in_channels, d_model), nn.ReLU(),
             nn.Linear(d_model, d_model))
-        self.iter_pred = iter_pred
         self.attn_mask = attn_mask
-    
+
     def _get_queries(self, queries=None, batch_size=None):
         """Get query tensor.
 
@@ -201,32 +185,17 @@ class ForAINetv2QueryDecoder_XAwarequery(BaseModule):
             queries (List[Tensor], optional): of len batch_size,
                 each of shape (n_queries_i, in_channels).
             batch_size (int, optional): batch size.
-        
+
         Returns:
             List[Tensor]: of len batch_size, each of shape
                 (n_queries_i, d_model).
         """
-        if batch_size is None:
-            batch_size = len(queries)
-        
         result_queries = []
-
+        batch_size = len(queries) if batch_size is None else batch_size
         for i in range(batch_size):
-            if len(queries[i]) != 0:
-                device = queries[i].device
-
-        for i in range(batch_size):
-            result_query = []
-            if hasattr(self, 'query'):
-                result_query.append(self.query.weight)
-            if queries is not None:
-                semantic_queries = self.semantic_queries.weight
-                # concat queries[i] and semantic_queries
-                if len(queries[i]) == 0:
-                    queries[i] = torch.empty(0, *semantic_queries.shape[1:]).to(device)
-                concat_queries = torch.cat((queries[i], semantic_queries.to(queries[i].device)), dim=0)
-                result_query.append(self.query_proj(concat_queries))
-            result_queries.append(torch.cat(result_query))
+            semantic_queries = self.semantic_queries.weight.to(queries[i].device)
+            concat_queries = torch.cat((queries[i], semantic_queries), dim=0)
+            result_queries.append(self.query_proj(concat_queries))
         return result_queries
 
     def _forward_head(self, queries, mask_feats):
@@ -241,8 +210,6 @@ class ForAINetv2QueryDecoder_XAwarequery(BaseModule):
 
         Returns:
             Tuple:
-                List[Tensor]: Classification predictions of len batch_size,
-                    each of shape (n_queries_i, n_classes + 1).
                 List[Tensor]: Confidence scores of len batch_size,
                     each of shape (n_queries_i, 1).
                 List[Tensor]: Predicted masks of len batch_size,
@@ -250,15 +217,12 @@ class ForAINetv2QueryDecoder_XAwarequery(BaseModule):
                 List[Tensor] or None: Attention masks of len batch_size,
                     each of shape (n_queries_i, n_points_i).
         """
-        #cls_preds, pred_scores, pred_masks, attn_masks = [], [], [], []
         pred_scores, pred_masks, attn_masks = [], [], []
         for i in range(len(queries)):
-            norm_query = self.out_norm(queries[i]) # [403, 256]
-            #cls_preds.append(self.out_cls(norm_query))   # [403, 4]
-            pred_score = self.out_score(norm_query) if self.objectness_flag \
-                else None    #[403, 1]
+            norm_query = self.out_norm(queries[i])
+            pred_score = self.out_score(norm_query)
             pred_scores.append(pred_score)
-            pred_mask = torch.einsum('nd,md->nm', norm_query, mask_feats[i])  #mask_feats:[38584, 256] -> [403, 38584]
+            pred_mask = torch.einsum('nd,md->nm', norm_query, mask_feats[i])
             if self.attn_mask:
                 attn_mask = (pred_mask.sigmoid() < 0.5).bool()
                 attn_mask[torch.where(
@@ -267,95 +231,42 @@ class ForAINetv2QueryDecoder_XAwarequery(BaseModule):
                 attn_masks.append(attn_mask)
             pred_masks.append(pred_mask)
         attn_masks = attn_masks if self.attn_mask else None
-        #return cls_preds, pred_scores, pred_masks, attn_masks  #[403, 4]  [403, 1]  [403, 38584]  [403, 38584]
-        return pred_scores, pred_masks, attn_masks  #[403, 1]  [403, 38584]  [403, 38584]
+        return pred_scores, pred_masks, attn_masks
 
-    def forward_simple(self, x, queries):
-        """Simple forward pass.
-        
-        Args:
-            x (List[Tensor]): of len batch_size, each of shape
-                (n_points_i, in_channels).
-            queries (List[Tensor], optional): of len batch_size, each of shape
-                (n_points_i, in_channles).
-        
-        Returns:
-            Dict: with labels, masks, and scores.
-        """
-        inst_feats = [self.input_proj(y) for y in x]
-        mask_feats = [self.x_mask(y) for y in x]
-        queries = self._get_queries(queries, len(x))
-        for i in range(len(self.cross_attn_layers)):
-            queries = self.cross_attn_layers[i](inst_feats, queries)
-            queries = self.self_attn_layers[i](queries)
-            queries = self.ffn_layers[i](queries)
-        #cls_preds, pred_scores, pred_masks, _ = self._forward_head(
-        pred_scores, pred_masks, _ = self._forward_head(
-            queries, mask_feats)
-        return dict(
-            #cls_preds=cls_preds,
-            masks=pred_masks,
-            scores=pred_scores)
-
-    def forward_iter_pred(self, x, queries):
+    def forward(self, x, queries):
         """Iterative forward pass.
-        
+
         Args:
             x (List[Tensor]): of len batch_size, each of shape
                 (n_points_i, in_channels).
-            queries (List[Tensor], optional): of len batch_size, each of shape
-                (n_points_i, in_channles).
-        
+            queries (List[Tensor]): of len batch_size, each of shape
+                (n_points_i, in_channels).
+
         Returns:
             Dict: with labels, masks, scores, and aux_outputs.
         """
-        #cls_preds, pred_scores, pred_masks = [], [], []
         pred_scores, pred_masks = [], []
-        inst_feats = [self.input_proj(y) for y in x]  #[38584, 256]  [37025,256]
-        mask_feats = [self.x_mask(y) for y in x]   #[38584, 256]  [37025,256]
-        queries = self._get_queries(queries, len(x))  #2 x [403, 256]
-        #queries = queries.to(mask_feats.device)
-        #cls_pred, pred_score, pred_mask, attn_mask = self._forward_head(
+        inst_feats = [self.input_proj(y) for y in x]
+        mask_feats = [self.x_mask(y) for y in x]
+        queries = self._get_queries(queries, len(x))
         pred_score, pred_mask, attn_mask = self._forward_head(
             queries, mask_feats)
-        #cls_preds.append(cls_pred)
         pred_scores.append(pred_score)
         pred_masks.append(pred_mask)
         for i in range(len(self.cross_attn_layers)):
             queries = self.cross_attn_layers[i](inst_feats, queries, attn_mask)
             queries = self.self_attn_layers[i](queries)
-            queries = self.ffn_layers[i](queries)  #2 x [403, 256]
-            #cls_pred, pred_score, pred_mask, attn_mask = self._forward_head(
+            queries = self.ffn_layers[i](queries)
             pred_score, pred_mask, attn_mask = self._forward_head(
                 queries, mask_feats)
-            #cls_preds.append(cls_pred)
             pred_scores.append(pred_score)
             pred_masks.append(pred_mask)
 
         aux_outputs = [
-            #{'cls_preds': cls_pred, 'masks': masks, 'scores': scores}
             {'masks': masks, 'scores': scores}
             for scores, masks in zip(
                 pred_scores[:-1], pred_masks[:-1])]
         return dict(
-            #cls_preds=cls_preds[-1],
             masks=pred_masks[-1],
             scores=pred_scores[-1],
             aux_outputs=aux_outputs)
-
-    def forward(self, x, queries=None):
-        """Forward pass.
-        
-        Args:
-            x (List[Tensor]): of len batch_size, each of shape
-                (n_points_i, in_channels).
-            queries (List[Tensor], optional): of len batch_size, each of shape
-                (n_points_i, in_channles).
-        
-        Returns:
-            Dict: with labels, masks, scores, and possibly aux_outputs.
-        """
-        if self.iter_pred:
-            return self.forward_iter_pred(x, queries)
-        else:
-            return self.forward_simple(x, queries)

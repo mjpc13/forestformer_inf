@@ -76,7 +76,7 @@ class ResidualBlock(SparseModule):
 
         Args:
             input (SparseConvTensor): Input tensor.
-        
+
         Returns:
             SparseConvTensor: Output tensor.
         """
@@ -101,7 +101,7 @@ class SpConvUNet(nn.Module):
         block_reps (int): Times to repeat each block.
         block (Callable): Block base class.
         indice_key_id (int): Id of current level.
-        normalize_before (bool): Wheter to call norm before conv. 
+        normalize_before (bool): Wheter to call norm before conv.
         return_blocks (bool): Whether to return previous blocks.
     """
 
